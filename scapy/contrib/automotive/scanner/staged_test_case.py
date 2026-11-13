@@ -1,29 +1,37 @@
+# SPDX-License-Identifier: GPL-2.0-only
 # This file is part of Scapy
-# See http://www.secdev.org/projects/scapy for more information
+# See https://scapy.net/ for more information
 # Copyright (C) Nils Weiss <nils@we155.de>
-# This program is published under a GPLv2 license
 
 # scapy.contrib.description = Staged AutomotiveTestCase base classes
 # scapy.contrib.status = library
 
 
-from scapy.compat import Any, List, Optional, Dict, Callable, cast, \
-    TYPE_CHECKING
+from scapy.contrib.automotive import log_automotive
 from scapy.contrib.automotive.scanner.graph import _Edge
-from scapy.error import log_interactive
 from scapy.contrib.automotive.ecu import EcuState, EcuResponse, Ecu
 from scapy.contrib.automotive.scanner.test_case import AutomotiveTestCaseABC, \
     TestCaseGenerator, StateGenerator, _SocketUnion
 
-
+# Typing imports
+from typing import (
+    Any,
+    List,
+    Optional,
+    Dict,
+    Callable,
+    cast,
+    Tuple,
+    TYPE_CHECKING,
+)
 if TYPE_CHECKING:
     from scapy.contrib.automotive.scanner.test_case import _TransitionTuple
     from scapy.contrib.automotive.scanner.configuration import \
         AutomotiveTestCaseExecutorConfiguration
 
-
 # type definitions
-_TestCaseConnectorCallable = Callable[[AutomotiveTestCaseABC, AutomotiveTestCaseABC], Dict[str, Any]]  # noqa: E501
+_TestCaseConnectorCallable = \
+    Callable[[AutomotiveTestCaseABC, AutomotiveTestCaseABC], Dict[str, Any]]
 
 
 class StagedAutomotiveTestCase(AutomotiveTestCaseABC, TestCaseGenerator, StateGenerator):  # noqa: E501
@@ -62,8 +70,10 @@ class StagedAutomotiveTestCase(AutomotiveTestCaseABC, TestCaseGenerator, StateGe
     # TestCase.
     __delay_stages = 5
 
-    def __init__(self, test_cases, connectors=None):
-        # type: (List[AutomotiveTestCaseABC], Optional[List[Optional[_TestCaseConnectorCallable]]]) -> None  # noqa: E501
+    def __init__(self,
+                 test_cases,  # type: List[AutomotiveTestCaseABC]
+                 connectors=None  # type: Optional[List[Optional[_TestCaseConnectorCallable]]]  # noqa: E501
+                 ):  # type: (...) -> None
         super(StagedAutomotiveTestCase, self).__init__()
         self.__test_cases = test_cases
         self.__connectors = connectors
@@ -78,6 +88,15 @@ class StagedAutomotiveTestCase(AutomotiveTestCaseABC, TestCaseGenerator, StateGe
     def __len__(self):
         # type: () -> int
         return len(self.__test_cases)
+
+    # TODO: Fix unit tests and remove this function
+    def __reduce__(self):  # type: ignore
+        f, t, d = super(StagedAutomotiveTestCase, self).__reduce__()  # type: ignore  # noqa: E501
+        try:
+            del d["_StagedAutomotiveTestCase__connectors"]
+        except KeyError:
+            pass
+        return f, t, d
 
     @property
     def test_cases(self):
@@ -111,8 +130,10 @@ class StagedAutomotiveTestCase(AutomotiveTestCaseABC, TestCaseGenerator, StateGe
         except AttributeError:
             return None
 
-    def get_new_edge(self, socket, config):
-        # type: (_SocketUnion, AutomotiveTestCaseExecutorConfiguration) -> Optional[_Edge]   # noqa: E501
+    def get_new_edge(self,
+                     socket,  # type: _SocketUnion
+                     config  # type: AutomotiveTestCaseExecutorConfiguration
+                     ):  # type: (...) -> Optional[_Edge]
         try:
             test_case = cast(StateGenerator, self.current_test_case)
             return test_case.get_new_edge(socket, config)
@@ -152,15 +173,18 @@ class StagedAutomotiveTestCase(AutomotiveTestCaseABC, TestCaseGenerator, StateGe
         else:
             # We waited more iterations and no new state appeared,
             # let's enter the next stage
-            log_interactive.info(
-                "[+] Staged AutomotiveTestCase %s completed",
+            log_automotive.info(
+                "Staged AutomotiveTestCase %s completed",
                 self.current_test_case.__class__.__name__)
             self.__stage_index += 1
             self.__completion_delay = 0
         return False
 
-    def pre_execute(self, socket, state, global_configuration):
-        # type: (_SocketUnion, EcuState, AutomotiveTestCaseExecutorConfiguration) -> None  # noqa: E501
+    def pre_execute(self,
+                    socket,  # type: _SocketUnion
+                    state,  # type: EcuState
+                    global_configuration  # type: AutomotiveTestCaseExecutorConfiguration  # noqa: E501
+                    ):  # type: (...) -> None
         test_case_cls = self.current_test_case.__class__
         try:
             self.__current_kwargs = global_configuration[
@@ -178,41 +202,40 @@ class StagedAutomotiveTestCase(AutomotiveTestCaseABC, TestCaseGenerator, StateGe
                 if self.__current_kwargs is not None and con_kwargs is not None:  # noqa: E501
                     self.__current_kwargs.update(con_kwargs)
 
-            log_interactive.debug("[i] Stage AutomotiveTestCase %s kwargs: %s",
-                                  self.current_test_case.__class__.__name__,
-                                  self.__current_kwargs)
+        log_automotive.debug("Stage AutomotiveTestCase %s kwargs: %s",
+                             self.current_test_case.__class__.__name__,
+                             self.__current_kwargs)
 
         self.current_test_case.pre_execute(socket, state, global_configuration)
 
     def execute(self, socket, state, **kwargs):
-        # type: (_SocketUnion, EcuState, Any) -> None  # noqa: E501
-        kwargs = self.__current_kwargs or dict()
+        # type: (_SocketUnion, EcuState, Any) -> None
+        kwargs.update(self.__current_kwargs or dict())
         self.current_test_case.execute(socket, state, **kwargs)
 
-    def post_execute(self, socket, state, global_configuration):
-        # type: (_SocketUnion, EcuState, AutomotiveTestCaseExecutorConfiguration) -> None  # noqa: E501
-        self.current_test_case.post_execute(socket, state, global_configuration)  # noqa: E501
+    def post_execute(self,
+                     socket,  # type: _SocketUnion
+                     state,  # type: EcuState
+                     global_configuration  # type: AutomotiveTestCaseExecutorConfiguration  # noqa: E501
+                     ):  # type: (...) -> None
+        self.current_test_case.post_execute(
+            socket, state, global_configuration)
 
     @staticmethod
-    def _show_headline(headline, sep="=", dump=False):
-        # type: (str, str, bool) -> Optional[str]
+    def _show_headline(headline, sep="="):
+        # type: (str, str) -> str
         s = "\n\n" + sep * (len(headline) + 10) + "\n"
         s += " " * 5 + headline + "\n"
         s += sep * (len(headline) + 10) + "\n"
-
-        if dump:
-            return s + "\n"
-        else:
-            print(s)
-            return None
+        return s + "\n"
 
     def show(self, dump=False, filtered=True, verbose=False):
         # type: (bool, bool, bool) -> Optional[str]
-        s = self._show_headline("AutomotiveTestCase Pipeline", "=", dump) or ""
+        s = self._show_headline("AutomotiveTestCase Pipeline", "=")
         for idx, t in enumerate(self.__test_cases):
             s += self._show_headline(
-                "AutomotiveTestCase Stage %d" % idx, "-", dump) or ""
-            s += t.show(dump, filtered, verbose) or ""
+                "AutomotiveTestCase Stage %d" % idx, "-")
+            s += t.show(True, filtered, verbose) or ""
 
         if dump:
             return s + "\n"
@@ -235,3 +258,18 @@ class StagedAutomotiveTestCase(AutomotiveTestCaseABC, TestCaseGenerator, StateGe
 
         supported_responses.sort(key=Ecu.sort_key_func)
         return supported_responses
+
+    def runtime_estimation(self):
+        # type: () -> Optional[Tuple[int, int, float]]
+
+        if hasattr(self.current_test_case, "runtime_estimation"):
+            cur_est = self.current_test_case.runtime_estimation()
+            if cur_est:
+                return len(self.test_cases), \
+                    self.__stage_index, \
+                    float(self.__stage_index) / len(self.test_cases) + \
+                    cur_est[2] / len(self.test_cases)
+
+        return len(self.test_cases), \
+            self.__stage_index, \
+            float(self.__stage_index) / len(self.test_cases)
